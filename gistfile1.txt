@@ -1,0 +1,142 @@
+import os
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras import layers, models
+from sklearn.model_selection import train_test_split
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.metrics import confusion_matrix, classification_report
+import time
+
+# Define paths to your dataset
+data_dir = 'dataset'
+classes = ['Cloudy', 'Rain', 'Shine', 'Sunrise']
+img_height, img_width, img_channels = 128, 128, 3  # Define common shape for resizing
+
+# Load images and labels
+images = []
+labels = []
+
+for i, cls in enumerate(classes):
+    cls_dir = os.path.join(data_dir, cls)
+    for img_name in os.listdir(cls_dir):
+        img = tf.keras.preprocessing.image.load_img(os.path.join(cls_dir, img_name), target_size=(img_height, img_width))
+        img_array = tf.keras.preprocessing.image.img_to_array(img)
+        images.append(img_array)
+        labels.append(i)  # Assigning label index
+
+# Convert lists to numpy arrays
+images = np.array(images)
+labels = np.array(labels)
+
+# Split the data into training, validation, and testing sets
+train_images, test_images, train_labels, test_labels = train_test_split(images, labels, test_size=0.2, random_state=42)
+train_images, val_images, train_labels, val_labels = train_test_split(train_images, train_labels, test_size=0.2, random_state=42)
+
+# Define the CNN architecture
+model = models.Sequential([
+    layers.Conv2D(32, (3, 3), activation='relu', input_shape=(img_height, img_width, img_channels)),
+    layers.MaxPooling2D((2, 2)),
+    layers.Conv2D(64, (3, 3), activation='relu'),
+    layers.MaxPooling2D((2, 2)),
+    layers.Conv2D(64, (3, 3), activation='relu'),
+    layers.Flatten(),
+    layers.Dense(64, activation='relu'),
+    layers.Dense(len(classes), activation='softmax')  # Output layer with number of classes
+])
+
+# Compile the model
+model.compile(optimizer='adam',
+              loss='sparse_categorical_crossentropy',
+              metrics=['accuracy'])
+
+# Train the model
+history = model.fit(train_images, train_labels, epochs=10, validation_data=(val_images, val_labels))
+
+# Plot training and validation accuracy
+plt.plot(history.history['accuracy'], label='Training Accuracy')
+plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
+plt.xlabel('Epoch')
+plt.ylabel('Accuracy')
+plt.legend()
+plt.title('Training and Validation Accuracy')
+plt.show()
+
+# Evaluate the model
+test_loss, test_acc = model.evaluate(test_images, test_labels)
+print(f'Test accuracy: {test_acc}')
+
+# Predict the labels
+predictions = model.predict(test_images)
+predicted_labels = np.argmax(predictions, axis=1)
+
+# Create confusion matrix
+conf_mat = confusion_matrix(test_labels, predicted_labels)
+
+# Plot confusion matrix
+plt.figure(figsize=(8, 6))
+sns.heatmap(conf_mat, annot=True, fmt='d', cmap='Blues', xticklabels=classes, yticklabels=classes)
+plt.xlabel('Predicted labels')
+plt.ylabel('True labels')
+plt.title('Confusion Matrix')
+plt.show()
+
+# Additional Tests
+
+# Test 2: Stress Test
+# Augment dataset to simulate heavy traffic conditions
+augmented_images = np.tile(train_images, (10, 1, 1, 1))  # Increase traffic volume by 10 times
+augmented_labels = np.tile(train_labels, 10)
+
+stress_model = models.clone_model(model)
+stress_model.compile(optimizer='adam',
+                     loss='sparse_categorical_crossentropy',
+                     metrics=['accuracy'])
+
+# Train the stress model
+stress_model.fit(augmented_images, augmented_labels, epochs=10, validation_data=(val_images, val_labels))
+
+# Evaluate the stress model
+stress_loss, stress_acc = stress_model.evaluate(test_images, test_labels)
+print(f'Stress Test Accuracy: {stress_acc}')
+
+# Test 3: Real-time Anomaly Detection
+# Simulate real-time data stream and measure detection time and accuracy
+start_time = time.time()
+real_time_predictions = stress_model.predict(test_images)
+end_time = time.time()
+
+real_time_detection_time = (end_time - start_time) / len(test_images)
+real_time_predicted_labels = np.argmax(real_time_predictions, axis=1)
+real_time_accuracy = np.mean(real_time_predicted_labels == test_labels)
+
+print(f'Real-time Detection Time per Image: {real_time_detection_time} seconds')
+print(f'Real-time Accuracy: {real_time_accuracy}')
+
+# Test 4: Comparative Analysis with RNN
+# Define a simple RNN for comparison
+rnn_model = models.Sequential([
+    layers.SimpleRNN(64, input_shape=(img_height, img_width, img_channels)),
+    layers.Dense(len(classes), activation='softmax')
+])
+
+# Compile the RNN model
+rnn_model.compile(optimizer='adam',
+                  loss='sparse_categorical_crossentropy',
+                  metrics=['accuracy'])
+
+# Train the RNN model
+rnn_model.fit(train_images, train_labels, epochs=10, validation_data=(val_images, val_labels))
+
+# Evaluate the RNN model
+rnn_loss, rnn_acc = rnn_model.evaluate(test_images, test_labels)
+print(f'RNN Test Accuracy: {rnn_acc}')
+
+# Generate classification report for comparison
+cnn_report = classification_report(test_labels, predicted_labels, target_names=classes)
+rnn_predictions = rnn_model.predict(test_images)
+rnn_predicted_labels = np.argmax(rnn_predictions, axis=1)
+rnn_report = classification_report(test_labels, rnn_predicted_labels, target_names=classes)
+
+print("CNN Classification Report:\n", cnn_report)
+print("RNN Classification Report:\n", rnn_report)
